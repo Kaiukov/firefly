@@ -260,7 +260,8 @@ restore_volumes() {
     fi
     
     # Get the host path for the temp directory (container path /backup maps to host path)
-    local host_temp_restore_dir="/Users/oleksandrkaiukov/Code/firefly/backup/temp_restore_$$"
+    # Use relative path to work on any server - assumes script runs from project root
+    local host_temp_restore_dir="$(pwd)/backup/temp_restore_$$"
     
     # Restore database volume
     if [ -f "$temp_restore_dir/firefly_db.tar.gz" ]; then
