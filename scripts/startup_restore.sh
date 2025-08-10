@@ -135,8 +135,8 @@ perform_startup_restore() {
         log_msg "INFO" "Executing restore from $backup_source"
         
         if [ "$backup_source" = "s3" ]; then
-            # For S3 restore, pass just the filename
-            if sh /scripts/firefly_restore.sh "$backup_file"; then
+            # For S3 restore, pass just the filename with --auto flag
+            if sh /scripts/firefly_restore.sh --auto "$backup_file"; then
                 log_msg "INFO" "Startup restore completed successfully from S3"
                 return 0
             else
@@ -144,8 +144,8 @@ perform_startup_restore() {
                 return 1
             fi
         else
-            # For local restore, pass full path
-            if sh /scripts/firefly_restore.sh "$backup_file"; then
+            # For local restore, pass full path with --auto flag
+            if sh /scripts/firefly_restore.sh --auto "$backup_file"; then
                 log_msg "INFO" "Startup restore completed successfully from local backup"
                 return 0
             else

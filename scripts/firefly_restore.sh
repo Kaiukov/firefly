@@ -44,18 +44,23 @@ info() {
 
 # Function to show usage
 usage() {
-    echo "Usage: $0 [backup_file]"
+    echo "Usage: $0 [OPTIONS] [backup_file]"
     echo ""
     echo "This script restores Firefly III from backup"
+    echo ""
+    echo "Options:"
+    echo "  --auto         Run in automatic mode (no confirmation prompts)"
+    echo "  -y, --yes      Same as --auto"
+    echo "  -h, --help     Show this help message"
     echo ""
     echo "Parameters:"
     echo "  backup_file    Optional: Path to backup file or filename in S3"
     echo "                 If not provided, downloads latest from S3"
     echo ""
     echo "Examples:"
-    echo "  $0                                          # Download latest from S3"
-    echo "  $0 firefly_backup_20250807_020005.tar.gz   # Download specific from S3"
-    echo "  $0 backup/firefly_backup_20250807.tar.gz   # Use local backup file"
+    echo "  $0 --auto                                   # Auto restore latest from S3"
+    echo "  $0 -y firefly_backup_20250807_020005.tar.gz # Auto restore specific from S3"
+    echo "  $0 backup/firefly_backup_20250807.tar.gz   # Manual restore from local file"
     echo ""
     exit 1
 }
@@ -485,7 +490,30 @@ show_post_install_instructions() {
 
 # Main execution
 main() {
-    local input_file=$1
+    local auto_mode=false
+    local input_file=""
+    
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --auto|-y|--yes)
+                auto_mode=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                ;;
+            -*)
+                echo "Unknown option $1"
+                usage
+                ;;
+            *)
+                # This is the backup file argument
+                input_file="$1"
+                shift
+                ;;
+        esac
+    done
     
     log_msg "Starting Firefly III restore process..."
     log_msg "Installation directory: $INSTALL_DIR"
@@ -496,7 +524,13 @@ main() {
     
     # Confirm the operation (skip confirmation in automated mode)
     echo -e "${YELLOW}This will restore Firefly III data from backup. Existing data will be replaced.${NC}"
-    if [ -t 0 ]; then
+    if [ "$auto_mode" = true ]; then
+        # Automatic mode - proceed without confirmation
+        log_msg "Running in automatic mode, proceeding with restore"
+    elif [ ! -t 0 ]; then
+        # Non-interactive mode (stdin not a terminal) - proceed automatically
+        log_msg "Non-interactive mode detected, proceeding with restore"
+    else
         # Interactive mode - ask for confirmation
         read -p "Are you sure you want to continue? (y/N): " -n 1 -r
         echo
@@ -504,9 +538,6 @@ main() {
             log_msg "Operation cancelled by user"
             exit 0
         fi
-    else
-        # Non-interactive mode (automated) - proceed automatically
-        log_msg "Running in automated mode, proceeding with restore"
     fi
     
     # Trap to ensure cleanup on exit
