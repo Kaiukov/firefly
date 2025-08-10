@@ -21,21 +21,29 @@ log_msg() {
 check_existing_data() {
     log_msg "INFO" "Checking for existing Firefly III data"
     
+    # Get database container name dynamically
+    local db_container=$(docker ps --filter "name=db" --format "{{.Names}}" | head -1)
+    if [ -z "$db_container" ]; then
+        log_msg "ERROR" "No database container found"
+        return 1
+    fi
+    log_msg "INFO" "Using database container: $db_container"
+    
     # Wait for database to be ready
     local max_attempts=3   # Testing: very quick timeout
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
         # Check if database is ready by trying to connect
-        if docker exec firefly-db-1 mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
+        if docker exec "$db_container" mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
             log_msg "INFO" "Database connection successful"
             
             # Check if firefly database exists and has tables
-            local table_count=$(docker exec firefly-db-1 mysql -u firefly -pstrongpassword123 -e "USE firefly; SHOW TABLES;" 2>/dev/null | wc -l || echo "0")
+            local table_count=$(docker exec "$db_container" mysql -u firefly -pstrongpassword123 -e "USE firefly; SHOW TABLES;" 2>/dev/null | wc -l || echo "0")
             
             if [ "$table_count" -gt 1 ]; then
                 # Database has tables, check for user data
-                local user_count=$(docker exec firefly-db-1 mysql -u firefly -pstrongpassword123 -e "USE firefly; SELECT COUNT(*) FROM users;" 2>/dev/null | tail -1 || echo "0")
+                local user_count=$(docker exec "$db_container" mysql -u firefly -pstrongpassword123 -e "USE firefly; SELECT COUNT(*) FROM users;" 2>/dev/null | tail -1 || echo "0")
                 
                 if [ "$user_count" -gt 0 ]; then
                     log_msg "INFO" "Existing data found ($user_count users), skipping restore"

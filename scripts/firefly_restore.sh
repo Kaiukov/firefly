@@ -217,7 +217,18 @@ restore_volumes() {
     
     # Stop containers first via Docker commands (not compose)
     log_msg "Stopping Firefly containers before volume restore..."
-    docker stop firefly-app-1 firefly-db-1 2>/dev/null || true
+    
+    # Get container names dynamically
+    local app_container=$(docker ps --filter "name=app" --format "{{.Names}}" | head -1)
+    local db_container=$(docker ps --filter "name=db" --format "{{.Names}}" | head -1)
+    
+    # Stop containers if they exist
+    if [ -n "$app_container" ]; then
+        docker stop "$app_container" 2>/dev/null || true
+    fi
+    if [ -n "$db_container" ]; then
+        docker stop "$db_container" 2>/dev/null || true
+    fi
     
     # Remove volumes if they exist (cleanup)  
     log_msg "Removing existing volumes for clean restore..."
@@ -323,11 +334,19 @@ start_containers() {
         sleep 5
         
         # Restart the main containers (app and db) to load restored data
-        log_msg "Restarting Firefly III app container..."
-        docker start firefly-app-1 || warn "Failed to start app container"
+        # Get container names dynamically
+        local app_container=$(docker ps -a --filter "name=app" --format "{{.Names}}" | head -1)
+        local db_container=$(docker ps -a --filter "name=db" --format "{{.Names}}" | head -1)
         
-        log_msg "Restarting Firefly III database container..."
-        docker start firefly-db-1 || warn "Failed to start database container"
+        if [ -n "$app_container" ]; then
+            log_msg "Restarting Firefly III app container..."
+            docker start "$app_container" || warn "Failed to start app container"
+        fi
+        
+        if [ -n "$db_container" ]; then
+            log_msg "Restarting Firefly III database container..."
+            docker start "$db_container" || warn "Failed to start database container"
+        fi
         
         log_msg "Waiting for containers to fully start..."
         sleep 15
