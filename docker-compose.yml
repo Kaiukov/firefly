@@ -1,0 +1,64 @@
+version: '3.3'
+services:
+  app:
+    image: fireflyiii/core:latest
+    restart: always
+    volumes:
+      - firefly_iii_upload:/var/www/html/storage/upload
+    env_file:
+      - .env
+    ports:
+      - 8081:8080
+    depends_on:
+      - db
+    networks:
+      - firefly
+
+  db:
+    image: mariadb:lts
+    restart: always
+    env_file:
+      - .db.env
+    volumes:
+      - firefly_iii_db:/var/lib/mysql
+    networks:
+      - firefly
+
+  backup:
+    image: alpine:latest
+    restart: always
+    container_name: firefly-backup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - firefly_iii_upload:/data/firefly_iii_upload:ro
+      - firefly_iii_db:/data/firefly_iii_db:ro
+      - ./backup:/backup
+      - ./scripts:/scripts
+      - ./logs:/logs
+      - ./.env:/.env:ro
+      - ./.db.env:/.db.env:ro
+      - ./.s3.env:/.s3.env:ro
+    environment:
+      - TZ=UTC
+      - STARTUP_DELAY=5
+    depends_on:
+      - app
+      - db
+    networks:
+      - firefly
+    command: >
+      sh -c "
+        apk add --no-cache aws-cli docker-cli mysql-client dcron tzdata && 
+        ls -la /scripts/ &&
+        chmod +x /scripts/*.sh 2>/dev/null || true &&
+        sh /scripts/backup_service.sh daemon
+      "
+
+networks:
+  firefly:
+    external: true
+
+
+volumes:
+  firefly_iii_upload:
+  firefly_iii_db:
