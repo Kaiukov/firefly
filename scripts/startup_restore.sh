@@ -17,54 +17,13 @@ log_msg() {
     echo "[$timestamp] [$level] $message"
 }
 
-# Check if Firefly III has existing data
+# Check if restore is needed (always restore in new orchestration model)
 check_existing_data() {
-    log_msg "INFO" "Checking for existing Firefly III data"
+    log_msg "INFO" "Checking if restore is needed"
     
-    # Get database container name dynamically
-    local db_container=$(docker ps --filter "name=db" --format "{{.Names}}" | head -1)
-    if [ -z "$db_container" ]; then
-        log_msg "ERROR" "No database container found"
-        return 1
-    fi
-    log_msg "INFO" "Using database container: $db_container"
-    
-    # Wait for database to be ready
-    local max_attempts=3   # Testing: very quick timeout
-    local attempt=0
-    
-    while [ $attempt -lt $max_attempts ]; do
-        # Check if database is ready by trying to connect
-        if docker exec "$db_container" mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
-            log_msg "INFO" "Database connection successful"
-            
-            # Check if firefly database exists and has tables
-            local table_count=$(docker exec "$db_container" mysql -u firefly -pstrongpassword123 -e "USE firefly; SHOW TABLES;" 2>/dev/null | wc -l || echo "0")
-            
-            if [ "$table_count" -gt 1 ]; then
-                # Database has tables, check for user data
-                local user_count=$(docker exec "$db_container" mysql -u firefly -pstrongpassword123 -e "USE firefly; SELECT COUNT(*) FROM users;" 2>/dev/null | tail -1 || echo "0")
-                
-                if [ "$user_count" -gt 0 ]; then
-                    log_msg "INFO" "Existing data found ($user_count users), skipping restore"
-                    return 1
-                else
-                    log_msg "INFO" "Database exists but no users found, restore needed"
-                    return 0
-                fi
-            else
-                log_msg "INFO" "Database exists but no tables found (fresh installation), restore needed"
-                return 0
-            fi
-        fi
-        
-        attempt=$((attempt + 1))
-        log_msg "INFO" "Waiting for database... (attempt $attempt/$max_attempts)"
-        sleep 5
-    done
-    
-    # After 15 attempts, assume fresh database and restore
-    log_msg "INFO" "Database connection timeout - assuming fresh installation, proceeding with restore"
+    # In the new orchestration model, we always restore from latest S3 backup
+    # since containers are not running yet and we want fresh data each startup
+    log_msg "INFO" "New deployment detected, restore from latest backup required"
     return 0
 }
 
@@ -111,47 +70,31 @@ get_latest_local_backup() {
     return 0
 }
 
-# Perform startup restore
+# Perform volume-only restore (no container management)
 perform_startup_restore() {
-    log_msg "INFO" "Starting automatic startup restore"
+    log_msg "INFO" "Starting volume-only restore from S3"
     
-    # Try to get latest backup (prefer S3, fallback to local)
-    local backup_source=""
+    # Always get latest backup from S3
     local backup_file=""
     
     if backup_file=$(get_latest_s3_backup 2>/dev/null); then
-        backup_source="s3"
-        log_msg "INFO" "Found S3 backup: $backup_file"
-    elif backup_file=$(get_latest_local_backup 2>/dev/null); then
-        backup_source="local"
-        log_msg "INFO" "Found local backup: $backup_file"
+        log_msg "INFO" "Found latest S3 backup: $backup_file"
     else
-        log_msg "INFO" "No backups available for restore"
-        return 0
+        log_msg "ERROR" "No S3 backups available for restore"
+        return 1
     fi
     
-    # Execute restore
+    # Execute volume-only restore (containers will be started by orchestration)
     if [ -x "/scripts/firefly_restore.sh" ]; then
-        log_msg "INFO" "Executing restore from $backup_source"
+        log_msg "INFO" "Executing volume-only restore from S3: $backup_file"
         
-        if [ "$backup_source" = "s3" ]; then
-            # For S3 restore, pass just the filename with --auto flag
-            if sh /scripts/firefly_restore.sh --auto "$backup_file"; then
-                log_msg "INFO" "Startup restore completed successfully from S3"
-                return 0
-            else
-                log_msg "ERROR" "Startup restore from S3 failed"
-                return 1
-            fi
+        # Use volume-only restore mode (new flag we'll add)
+        if sh /scripts/firefly_restore.sh --auto --volume-only "$backup_file"; then
+            log_msg "INFO" "Volume-only restore completed successfully from S3"
+            return 0
         else
-            # For local restore, pass full path with --auto flag
-            if sh /scripts/firefly_restore.sh --auto "$backup_file"; then
-                log_msg "INFO" "Startup restore completed successfully from local backup"
-                return 0
-            else
-                log_msg "ERROR" "Startup restore from local backup failed"
-                return 1
-            fi
+            log_msg "ERROR" "Volume-only restore from S3 failed"
+            return 1
         fi
     else
         log_msg "ERROR" "Restore script not found or not executable"

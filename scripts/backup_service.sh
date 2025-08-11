@@ -146,6 +146,111 @@ EOF
     log_msg "INFO" "Cron daemon started with backup schedule"
 }
 
+# Container orchestration functions
+start_database_container() {
+    log_msg "INFO" "Starting database container"
+    
+    # Start database container
+    if docker compose start db; then
+        log_msg "INFO" "Database container started, waiting for initialization..."
+        
+        # Wait for database to be fully ready (LXC-compatible timing)
+        local max_attempts=24  # 4 minutes total
+        local attempt=0
+        local wait_time=10
+        
+        while [ $attempt -lt $max_attempts ]; do
+            # Check if container is running
+            if ! docker compose ps db | grep -q "running"; then
+                log_msg "WARNING" "Database container not running, attempt $((attempt + 1))/$max_attempts"
+                sleep $wait_time
+                attempt=$((attempt + 1))
+                continue
+            fi
+            
+            # Check database readiness
+            if docker compose exec -T db mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
+                # Check InnoDB is fully initialized
+                if docker compose exec -T db mysql -u firefly -pstrongpassword123 -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
+                    log_msg "INFO" "Database is fully ready and initialized"
+                    return 0
+                else
+                    log_msg "INFO" "Database connected but InnoDB not fully ready, waiting..."
+                fi
+            else
+                log_msg "INFO" "Database not ready yet, waiting... (attempt $((attempt + 1))/$max_attempts)"
+            fi
+            
+            sleep $wait_time
+            attempt=$((attempt + 1))
+        done
+        
+        log_msg "ERROR" "Database failed to initialize within timeout"
+        return 1
+    else
+        log_msg "ERROR" "Failed to start database container"
+        return 1
+    fi
+}
+
+start_app_container() {
+    log_msg "INFO" "Starting application container"
+    
+    if docker compose start app; then
+        log_msg "INFO" "Application container started, waiting for readiness..."
+        
+        # Wait for app to be ready
+        local max_attempts=12  # 2 minutes
+        local attempt=0
+        local wait_time=10
+        
+        while [ $attempt -lt $max_attempts ]; do
+            if docker compose ps app | grep -q "running"; then
+                log_msg "INFO" "Application container is running and ready"
+                return 0
+            fi
+            
+            log_msg "INFO" "Application container not ready yet, waiting... (attempt $((attempt + 1))/$max_attempts)"
+            sleep $wait_time
+            attempt=$((attempt + 1))
+        done
+        
+        log_msg "WARNING" "Application container startup timeout, but continuing"
+        return 0
+    else
+        log_msg "ERROR" "Failed to start application container"
+        return 1
+    fi
+}
+
+orchestrate_startup() {
+    log_msg "INFO" "Starting container orchestration sequence"
+    
+    # 1. Restore data first (containers are stopped)
+    log_msg "INFO" "Step 1: Restore data from S3"
+    if ! sh "$STARTUP_RESTORE_SCRIPT" >> "$LOG_FILE" 2>&1; then
+        log_msg "ERROR" "Data restore failed"
+        return 1
+    fi
+    
+    # 2. Start database and wait for full initialization
+    log_msg "INFO" "Step 2: Start database container"
+    if ! start_database_container; then
+        log_msg "ERROR" "Database startup failed"
+        return 1
+    fi
+    
+    # 3. Start application container
+    log_msg "INFO" "Step 3: Start application container"
+    if ! start_app_container; then
+        log_msg "ERROR" "Application startup failed"
+        return 1
+    fi
+    
+    log_msg "INFO" "Container orchestration completed successfully"
+    return 0
+}
+
 # Startup restore check
 startup_restore() {
     log_msg "INFO" "Checking if startup restore is needed"
@@ -182,8 +287,8 @@ main() {
             startup_restore
             ;;
         "daemon"|"")
-            # Full daemon mode
-            startup_restore
+            # Full daemon mode with container orchestration
+            orchestrate_startup
             setup_cron
             
             # Keep the service running

@@ -51,6 +51,7 @@ usage() {
     echo "Options:"
     echo "  --auto         Run in automatic mode (no confirmation prompts)"
     echo "  -y, --yes      Same as --auto"
+    echo "  --volume-only  Restore volumes only, skip container management"
     echo "  -h, --help     Show this help message"
     echo ""
     echo "Parameters:"
@@ -491,6 +492,7 @@ show_post_install_instructions() {
 # Main execution
 main() {
     local auto_mode=false
+    local volume_only_mode=false
     local input_file=""
     
     # Parse command line arguments
@@ -498,6 +500,10 @@ main() {
         case $1 in
             --auto|-y|--yes)
                 auto_mode=true
+                shift
+                ;;
+            --volume-only)
+                volume_only_mode=true
                 shift
                 ;;
             -h|--help)
@@ -550,13 +556,20 @@ main() {
     restore_volumes
     update_config
     
-    # Try to start containers
-    if start_containers; then
-        verify_installation
-        show_post_install_instructions
+    # Skip container management in volume-only mode
+    if [ "$volume_only_mode" = true ]; then
+        log_msg "Volume-only mode: Skipping container startup"
+        info "Volume restoration completed successfully"
+        info "Containers will be started by orchestration service"
     else
-        warn "Container startup failed, but data restoration was successful"
-        warn "Please check the configuration and try starting manually"
+        # Try to start containers (normal mode)
+        if start_containers; then
+            verify_installation
+            show_post_install_instructions
+        else
+            warn "Container startup failed, but data restoration was successful"
+            warn "Please check the configuration and try starting manually"
+        fi
     fi
     
     log_msg "Restore process completed successfully!"
