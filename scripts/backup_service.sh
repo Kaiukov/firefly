@@ -171,8 +171,16 @@ start_database_container() {
         local wait_time=10
         
         while [ $attempt -lt $max_attempts ]; do
-            # Check if container is running
-            if ! $compose_cmd -f /docker-compose.yml -p firefly ps db | grep -q "running"; then
+            # Check if container is running - more robust detection
+            local container_status=$($compose_cmd -f /docker-compose.yml -p firefly ps -q db 2>/dev/null)
+            local container_running=""
+            if [ -n "$container_status" ]; then
+                container_running=$(docker inspect "$container_status" --format='{{.State.Running}}' 2>/dev/null || echo "false")
+            fi
+            
+            log_msg "DEBUG" "Container ID: '$container_status', Running: '$container_running'"
+            
+            if [ -z "$container_status" ] || [ "$container_running" != "true" ]; then
                 log_msg "WARNING" "Database container not running, attempt $((attempt + 1))/$max_attempts"
                 sleep $wait_time
                 attempt=$((attempt + 1))
@@ -227,7 +235,13 @@ start_app_container() {
         local wait_time=10
         
         while [ $attempt -lt $max_attempts ]; do
-            if $compose_cmd -f /docker-compose.yml -p firefly ps app | grep -q "running"; then
+            local app_container_id=$($compose_cmd -f /docker-compose.yml -p firefly ps -q app 2>/dev/null)
+            local app_running=""
+            if [ -n "$app_container_id" ]; then
+                app_running=$(docker inspect "$app_container_id" --format='{{.State.Running}}' 2>/dev/null || echo "false")
+            fi
+            
+            if [ -n "$app_container_id" ] && [ "$app_running" = "true" ]; then
                 log_msg "INFO" "Application container is running and ready"
                 return 0
             fi
