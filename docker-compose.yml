@@ -51,6 +51,7 @@ services:
       - ./.env:/.env:ro
       - ./.db.env:/.db.env:ro
       - ./.s3.env:/.s3.env:ro
+      - ./docker-compose.yml:/docker-compose.yml:ro
     environment:
       - TZ=UTC
       - STARTUP_DELAY=5

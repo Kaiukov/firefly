@@ -161,8 +161,8 @@ start_database_container() {
         return 1
     fi
     
-    # Start database container
-    if $compose_cmd start db; then
+    # Start database container using mounted docker-compose.yml
+    if $compose_cmd -f /docker-compose.yml start db; then
         log_msg "INFO" "Database container started, waiting for initialization..."
         
         # Wait for database to be fully ready (LXC-compatible timing)
@@ -172,7 +172,7 @@ start_database_container() {
         
         while [ $attempt -lt $max_attempts ]; do
             # Check if container is running
-            if ! $compose_cmd ps db | grep -q "running"; then
+            if ! $compose_cmd -f /docker-compose.yml ps db | grep -q "running"; then
                 log_msg "WARNING" "Database container not running, attempt $((attempt + 1))/$max_attempts"
                 sleep $wait_time
                 attempt=$((attempt + 1))
@@ -180,9 +180,9 @@ start_database_container() {
             fi
             
             # Check database readiness
-            if $compose_cmd exec -T db mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
+            if $compose_cmd -f /docker-compose.yml exec -T db mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
                 # Check InnoDB is fully initialized
-                if $compose_cmd exec -T db mysql -u firefly -pstrongpassword123 -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
+                if $compose_cmd -f /docker-compose.yml exec -T db mysql -u firefly -pstrongpassword123 -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
                     log_msg "INFO" "Database is fully ready and initialized"
                     return 0
                 else
@@ -218,7 +218,7 @@ start_app_container() {
         return 1
     fi
     
-    if $compose_cmd start app; then
+    if $compose_cmd -f /docker-compose.yml start app; then
         log_msg "INFO" "Application container started, waiting for readiness..."
         
         # Wait for app to be ready
@@ -227,7 +227,7 @@ start_app_container() {
         local wait_time=10
         
         while [ $attempt -lt $max_attempts ]; do
-            if $compose_cmd ps app | grep -q "running"; then
+            if $compose_cmd -f /docker-compose.yml ps app | grep -q "running"; then
                 log_msg "INFO" "Application container is running and ready"
                 return 0
             fi
