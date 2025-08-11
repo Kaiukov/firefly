@@ -190,13 +190,14 @@ start_database_container() {
             # Get database credentials from environment
             local db_user=$(grep "MYSQL_USER=" /.db.env 2>/dev/null | cut -d'=' -f2 || echo "firefly")
             local db_pass=$(grep "MYSQL_PASSWORD=" /.db.env 2>/dev/null | cut -d'=' -f2 || echo "secret_firefly_password")
+            local db_name=$(grep "MYSQL_DATABASE=" /.db.env 2>/dev/null | cut -d'=' -f2 || echo "firefly")
             
-            log_msg "DEBUG" "Using DB credentials: user='$db_user', pass='***${db_pass#${db_pass%???}}'"
+            log_msg "DEBUG" "Using DB credentials: user='$db_user', db='$db_name', pass='***${db_pass#${db_pass%???}}'"
             
-            # Check database readiness
-            if $compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -e "SELECT 1;" >/dev/null 2>&1; then
+            # Check database readiness with explicit database name
+            if $compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -D"$db_name" -e "SELECT 1;" >/dev/null 2>&1; then
                 # Check InnoDB is fully initialized
-                if $compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
+                if $compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -D"$db_name" -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
                     log_msg "INFO" "Database is fully ready and initialized"
                     return 0
                 else
