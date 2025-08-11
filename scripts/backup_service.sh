@@ -195,7 +195,11 @@ start_database_container() {
             log_msg "DEBUG" "Using DB credentials: user='$db_user', db='$db_name', pass='***${db_pass#${db_pass%???}}'"
             
             # Check database readiness with explicit database name
-            if $compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -D"$db_name" -e "SELECT 1;" >/dev/null 2>&1; then
+            local mysql_output=""
+            mysql_output=$($compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -D"$db_name" -e "SELECT 1;" 2>&1)
+            local mysql_exit_code=$?
+            
+            if [ $mysql_exit_code -eq 0 ]; then
                 # Check InnoDB is fully initialized
                 if $compose_cmd -f /docker-compose.yml -p firefly exec -T db mysql -u"$db_user" -p"$db_pass" -D"$db_name" -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
                     log_msg "INFO" "Database is fully ready and initialized"
@@ -204,6 +208,7 @@ start_database_container() {
                     log_msg "INFO" "Database connected but InnoDB not fully ready, waiting..."
                 fi
             else
+                log_msg "DEBUG" "MySQL connection failed (exit code: $mysql_exit_code): $mysql_output"
                 log_msg "INFO" "Database not ready yet, waiting... (attempt $((attempt + 1))/$max_attempts)"
             fi
             
