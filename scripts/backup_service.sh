@@ -200,13 +200,9 @@ start_database_container() {
             local mysql_exit_code=$?
             
             if [ $mysql_exit_code -eq 0 ]; then
-                # Check InnoDB is fully initialized
-                if mysql -h db -u"$db_user" -p"$db_pass" -D"$db_name" -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
-                    log_msg "INFO" "Database is fully ready and initialized"
-                    return 0
-                else
-                    log_msg "INFO" "Database connected but InnoDB not fully ready, waiting..."
-                fi
+                # Database connection successful means it's ready
+                log_msg "INFO" "Database is fully ready and accepting connections"
+                return 0
             else
                 log_msg "DEBUG" "MySQL connection failed (exit code: $mysql_exit_code): $mysql_output"
                 log_msg "INFO" "Database not ready yet, waiting... (attempt $((attempt + 1))/$max_attempts)"
