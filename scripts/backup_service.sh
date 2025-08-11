@@ -150,8 +150,19 @@ EOF
 start_database_container() {
     log_msg "INFO" "Starting database container"
     
+    # Determine which docker compose command to use
+    local compose_cmd=""
+    if command -v docker-compose >/dev/null 2>&1; then
+        compose_cmd="docker-compose"
+    elif docker compose version >/dev/null 2>&1; then
+        compose_cmd="docker compose"
+    else
+        log_msg "ERROR" "Neither docker-compose nor docker compose command available"
+        return 1
+    fi
+    
     # Start database container
-    if docker compose start db; then
+    if $compose_cmd start db; then
         log_msg "INFO" "Database container started, waiting for initialization..."
         
         # Wait for database to be fully ready (LXC-compatible timing)
@@ -161,7 +172,7 @@ start_database_container() {
         
         while [ $attempt -lt $max_attempts ]; do
             # Check if container is running
-            if ! docker compose ps db | grep -q "running"; then
+            if ! $compose_cmd ps db | grep -q "running"; then
                 log_msg "WARNING" "Database container not running, attempt $((attempt + 1))/$max_attempts"
                 sleep $wait_time
                 attempt=$((attempt + 1))
@@ -169,9 +180,9 @@ start_database_container() {
             fi
             
             # Check database readiness
-            if docker compose exec -T db mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
+            if $compose_cmd exec -T db mysql -u firefly -pstrongpassword123 -e "SELECT 1;" >/dev/null 2>&1; then
                 # Check InnoDB is fully initialized
-                if docker compose exec -T db mysql -u firefly -pstrongpassword123 -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
+                if $compose_cmd exec -T db mysql -u firefly -pstrongpassword123 -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null | grep -q "INNODB MONITOR OUTPUT"; then
                     log_msg "INFO" "Database is fully ready and initialized"
                     return 0
                 else
@@ -196,7 +207,18 @@ start_database_container() {
 start_app_container() {
     log_msg "INFO" "Starting application container"
     
-    if docker compose start app; then
+    # Determine which docker compose command to use
+    local compose_cmd=""
+    if command -v docker-compose >/dev/null 2>&1; then
+        compose_cmd="docker-compose"
+    elif docker compose version >/dev/null 2>&1; then
+        compose_cmd="docker compose"
+    else
+        log_msg "ERROR" "Neither docker-compose nor docker compose command available"
+        return 1
+    fi
+    
+    if $compose_cmd start app; then
         log_msg "INFO" "Application container started, waiting for readiness..."
         
         # Wait for app to be ready
@@ -205,7 +227,7 @@ start_app_container() {
         local wait_time=10
         
         while [ $attempt -lt $max_attempts ]; do
-            if docker compose ps app | grep -q "running"; then
+            if $compose_cmd ps app | grep -q "running"; then
                 log_msg "INFO" "Application container is running and ready"
                 return 0
             fi
