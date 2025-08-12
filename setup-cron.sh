@@ -5,7 +5,7 @@
 
 set -e
 
-SCRIPT_DIR="/root/firefly"
+SCRIPT_DIR="$(pwd)"
 LOG_FILE="/var/log/firefly-backup.log"
 
 echo "Setting up Firefly III backup cron job..."
@@ -19,8 +19,9 @@ sudo chmod 644 "$LOG_FILE"
 # Using 1:00 UTC to cover both scenarios (3 AM in winter, 4 AM in summer DST)
 CRON_JOB="0 1 * * * cd $SCRIPT_DIR && ./scripts/backup.sh >> $LOG_FILE 2>&1"
 
-# Add cron job to root crontab
-echo "Adding cron job: $CRON_JOB"
+# Add cron job to crontab
+echo "Adding cron job for directory: $SCRIPT_DIR"
+echo "Cron job: $CRON_JOB"
 (crontab -l 2>/dev/null | grep -v "firefly.*backup.sh" || true; echo "$CRON_JOB") | crontab -
 
 echo "Cron job added successfully!"
