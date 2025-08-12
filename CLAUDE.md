@@ -4,38 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Firefly III personal finance manager setup using Docker Compose with automated backup system. The repository contains a fully automated backup service with S3 integration, daily scheduling, and startup restore functionality.
+This is a simplified Firefly III personal finance manager setup using Docker Compose with S3 backup integration. The project has been overhauled to be as simple as possible while maintaining reliable backup functionality.
 
 **Project Structure:**
-- `/backend/` - Complete Firefly III Docker setup with automated backup system
-- `/frontend/` - (Reserved for future frontend development)
+- `docker-compose.yml` - Simple 2-service setup (app + database)
+- `scripts/backup.sh` - Manual backup script with S3 upload
+- `scripts/restore.sh` - Manual restore script with S3 download
+- `setup-cron.sh` - One-time cron job setup script
 
-**Working Directory:** All commands should be run from the root directory `/Users/oleksandrkaiukov/Code/firefly`
+**Working Directory:** All commands should be run from the root directory `/root/firefly`
 
-## Current Architecture
+## Simple Architecture
 
-- **3-Service Docker Setup**: Firefly III app, MariaDB database, and automated backup service
-- **Automated S3 Backup System**: Containerized backup service with S3 integration (Phase 2 complete)
-- **Scheduled Backups**: Daily backups at 3 AM UTC with 30-day retention cleanup
-- **Startup Restore**: Automatic restore from latest backup on container startup if no data exists
-- **Local + S3 Storage**: Backups stored locally in `/backup` directory and uploaded to S3
-- **Advanced Logging**: Comprehensive logging with rotation and health checks
-- **External Network**: Uses external Docker network named "firefly"
+- **2-Service Docker Setup**: Only Firefly III app and MariaDB database
+- **No Container Orchestration**: Simple docker-compose up/down operation
+- **Host-based Cron**: Daily backups scheduled at 3 AM Kyiv time via system cron
+- **S3 Integration**: All backups stored in S3 bucket (with local copies)
+- **Manual Commands**: Two simple scripts for backup and restore operations
+- **No Startup Restore**: Clean startup every time, no automatic data restoration
 
-## Current System Components
+## System Components
 
 ### Active Components
-- `docker-compose.yml`: 3-service definition (Firefly III app + MariaDB + backup service)
-- `scripts/backup_service.sh`: Main automated backup daemon with scheduling
-- `scripts/firefly_backup.sh`: Backup creation with S3 upload + local storage
-- `scripts/firefly_restore.sh`: Flexible restore from local files or S3 download
-- `scripts/startup_restore.sh`: Automatic startup restore functionality
-- `backup/`: Local backup directory
-  - Current backups: Multiple timestamped .tar.gz files
-- `logs/`: Service logs directory with rotation
+- `docker-compose.yml`: 2-service definition (Firefly III app + MariaDB only)
+- `scripts/backup.sh`: Simple backup with S3 upload
+- `scripts/restore.sh`: Simple restore with S3 download
+- `setup-cron.sh`: One-time cron setup script
 - `.env`: Firefly III application configuration
 - `.db.env`: Database credentials
-- `.s3.env`: S3/Cloudflare R2 credentials (active and integrated)
+- `.s3.env`: S3/Cloudflare R2 credentials
 
 ### Volume Structure
 - `firefly_iii_upload`: User upload data
@@ -44,127 +41,117 @@ This is a Firefly III personal finance manager setup using Docker Compose with a
 ## Current Commands
 
 ### Docker Operations
-**Note: Run all commands from the root directory**
-
 ```bash
-# Working directory should be root (firefly/)
-
-# Start all services (app + database + backup)
+# Start services
 docker-compose up -d
 
-# Stop all services
+# Stop services
 docker-compose down
 
-# View logs for all services
+# View logs (all services)
 docker-compose logs
 
-# View backup service logs specifically
-docker-compose logs backup
+# View specific service logs
+docker-compose logs app
+docker-compose logs db
 
 # Check status
 docker-compose ps
 ```
 
-### Backup Operations
+### Backup & Restore Operations
 ```bash
-# Automated daily backups run at 3 AM UTC (no manual intervention needed)
-# View backup service status
-docker-compose logs backup
+# Manual backup (uploads to S3 + saves locally)
+./scripts/backup.sh
 
-# Manual backup via backup service container
-docker-compose exec backup sh /scripts/backup_service.sh daily_backup
-
-# Manual S3 cleanup
-docker-compose exec backup sh /scripts/backup_service.sh cleanup_s3
-
-# Health check of backup system
-docker-compose exec backup sh /scripts/backup_service.sh health_check
+# Manual restore (downloads from S3 + restores volumes)
+./scripts/restore.sh firefly_backup_20250812_030000.tar.gz
 
 # View backup logs
-docker-compose exec backup cat /logs/backup_service.log
+tail -f /var/log/firefly-backup.log
 
 # List local backups
 ls -la backup/
-
-# Manual restore from local backup (run from backup container)
-docker-compose exec backup sh /scripts/firefly_restore.sh backup/firefly_backup_20250807_193028.tar.gz
-
-# Manual restore from S3 (auto-downloads latest)
-docker-compose exec backup sh /scripts/firefly_restore.sh
-
-# Manual restore specific backup from S3
-docker-compose exec backup sh /scripts/firefly_restore.sh firefly_backup_20250807_193028.tar.gz
 ```
 
-### Network Setup
+### One-time Setup
 ```bash
-# Create external network (required)
+# Create external network (required once)
 docker network create firefly
 
-# Inspect volumes
-docker volume inspect firefly_iii_db
-docker volume inspect firefly_iii_upload
+# Setup daily backup cron job (run once)
+./setup-cron.sh
+
+# View configured cron jobs
+crontab -l
 ```
 
 ## Configuration
 
-### Current Required Files
+### Required Files
 - `.env`: Firefly III application configuration
 - `.db.env`: Database credentials
-- `.s3.env`: S3/Cloudflare R2 credentials (active and integrated)
+- `.s3.env`: S3/Cloudflare R2 credentials
 
-### Current Setup Notes
+### Setup Notes
 - App runs on port 8081 (mapped from container port 8080)
-- Database uses MariaDB LTS image
+- Database uses MariaDB LTS image with Europe/Kyiv timezone
 - External "firefly" network required
-- S3 backup/restore system operational with Cloudflare R2
-- Graceful fallback to local-only if S3 unavailable
+- Automatic restarts enabled (`unless-stopped`)
+- Daily backups at 3 AM Kyiv time (1:00 UTC)
 
-### S3 Configuration Template (.s3.env)
+### S3 Configuration (.s3.env)
 ```bash
 S3_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 S3_BUCKET=fireflybackup
 S3_ACCESS_KEY=your-access-key-here
 S3_SECRET_KEY=your-secret-key-here
 S3_REGION=auto
-BACKUP_RETENTION_DAYS=30
 ```
 
-## Planned Enhancements Roadmap
+## Simple Workflow
 
-### Phase 1: S3 Integration ✅ COMPLETED
-- [x] Update backup scripts to use S3 instead of webhook
-- [x] Add S3 upload/download functionality  
-- [x] Test S3 backup and restore workflow
-- [x] Graceful fallback when S3 unavailable
+### Daily Operation
+1. **Automated Backup**: Cron runs `backup.sh` at 3 AM Kyiv time
+2. **Backup Process**: Stop containers → Create volume archives → Upload to S3 → Start containers
+3. **Cleanup**: Keeps last 30 backups locally and in S3
 
-### Phase 2: Automated Backup Service ✅ COMPLETED
-- [x] Add backup service to docker-compose.yml
-- [x] Implement daily backup scheduling (3 AM UTC)
-- [x] Add 30-day backup retention cleanup
-- [x] Advanced logging with rotation
-- [x] Startup restore functionality
-- [x] Health checks and monitoring
-- [x] Manual backup commands via docker exec
+### Manual Operations
+1. **Manual Backup**: Run `./scripts/backup.sh` anytime
+2. **Manual Restore**: Run `./scripts/restore.sh filename.tar.gz` when needed
+3. **Container Management**: Standard `docker-compose up -d` / `docker-compose down`
 
-### Phase 3: Future Enhancements
-- [ ] Backup verification and integrity testing
-- [ ] Email/webhook notifications for backup failures
-- [ ] Multiple backup retention policies (daily/weekly/monthly)
-- [ ] Backup encryption
-- [ ] Multi-region S3 replication
+## Architecture Details
 
-### Phase 4: Advanced Features (Optional)
-- [ ] Web UI for backup management
-- [ ] Database migration tools
-- [ ] Incremental backups
-- [ ] Backup compression optimization
+### Backup Flow
+1. **backup.sh** stops containers via docker-compose
+2. Creates tar.gz archives of both Docker volumes
+3. Includes .env and .db.env configuration files
+4. Uploads final archive to S3 bucket
+5. Saves local copy in ./backup/ directory
+6. Restarts containers
+7. Cleans up old backups (30-day retention)
 
-## S3/Cloudflare R2 Setup Instructions
+### Restore Flow
+1. **restore.sh** downloads specified backup from S3
+2. Stops containers via docker-compose
+3. Removes existing volumes completely
+4. Recreates volumes from backup archives
+5. Restarts containers with restored data
+6. Cleans up temporary files
+
+### Critical Dependencies
+- External Docker network "firefly"
+- Environment files: `.env`, `.db.env`, `.s3.env`
+- S3/Cloudflare R2 bucket with proper API tokens
+- AWS CLI installed on host system
+- System cron daemon running
+
+## S3/Cloudflare R2 Setup
 
 ### 1. Create Cloudflare R2 Bucket
 1. Log into Cloudflare dashboard
-2. Go to R2 Object Storage  
+2. Go to R2 Object Storage
 3. Create bucket named `fireflybackup`
 
 ### 2. Generate API Credentials
@@ -172,86 +159,47 @@ BACKUP_RETENTION_DAYS=30
 2. Create API token with Object Read & Write permissions
 3. Save Account ID, Access Key, and Secret Key to `.s3.env`
 
-### 3. S3 Commands (Active Integration)
-```bash
-# Test S3 connection
-docker-compose exec backup /scripts/backup_service.sh health_check
+## Troubleshooting
 
-# List S3 backups
-docker-compose exec backup aws s3 ls s3://fireflybackup/ --endpoint-url=https://dd7ab9be93db46931523f62d3fe7f581.r2.cloudflarestorage.com
-
-# Manual backup to S3
-docker-compose exec backup sh /scripts/backup_service.sh daily_backup
-```
-
-## Current Automated Workflow
-
-1. **Automated Daily Backups**: Backup service runs daily at 3 AM UTC, uploads to S3 + saves locally
-2. **Startup Restore**: On container startup, automatically restores from latest backup if no data exists
-3. **Dual Storage**: All backups stored in `/backup` directory and S3 bucket with 30-day retention
-4. **Health Monitoring**: Automated health checks verify S3 connectivity and disk space
-5. **Advanced Logging**: Comprehensive logs with rotation in `/logs` directory
-6. **Manual Operations**: All backup operations available via docker exec commands
-
-## Architecture Details
-
-### Container Relationships
-- **Firefly App** connects to **MariaDB** via internal "firefly" network
-- **Backup Service** monitors both containers via Docker socket and volume mounts  
-- **External Network**: "firefly" must be created manually before startup
-- **Volume Dependencies**: App and DB volumes are mounted read-only to backup service
-
-### Data Flow
-1. **Normal Operation**: App ↔ Database (port 8081 exposed externally)
-2. **Backup Flow**: Service creates archives from volumes → Local storage → S3 upload
-3. **Restore Flow**: S3 download → Volume recreation → Container restart
-4. **Logging**: All operations logged to `/logs` with rotation
-
-### Critical Dependencies
-- External Docker network "firefly" 
-- Environment files: `.env`, `.db.env`, `.s3.env` (gitignored for security)
-- Docker socket access for backup service container management
-- S3/Cloudflare R2 bucket with proper API tokens
-
-## Known Issues & Limitations
-
-### Active Issues
-- **Cron Job Execution**: Some log entries show script path issues in backup container
-- **Volume Name Dependencies**: Scripts assume specific Docker Compose project naming
-- **Missing Config Templates**: No `.env.example` files for new deployments
-- **Docker Socket Security**: Backup service has full Docker daemon access
-
-### Architecture Limitations  
-- **Single Point of Failure**: S3 bucket is only backup destination
-- **No Backup Verification**: Created backups are not integrity checked
-- **Root Container Privileges**: Backup service runs with elevated permissions
-- **Manual Network Setup**: External network requires manual creation
-
-## Troubleshooting Automated System
-
-### Backup Service Issues
-- Check backup service logs: `docker-compose logs backup`
-- Verify service is running: `docker-compose ps`
-- Run health check: `docker-compose exec backup sh /scripts/backup_service.sh health_check`
-- Check cron jobs: `docker-compose exec backup crontab -l`
-- View detailed logs: `docker-compose exec backup cat /logs/backup_service.log`
-
-### S3 Issues  
-- Verify S3 connectivity: `docker-compose exec backup sh /scripts/backup_service.sh health_check`
-- Check `.s3.env` credentials are correct (bucket name: `fireflybackup`)
-- Check Cloudflare R2 bucket permissions and API token access
-- Ensure network connectivity to S3 endpoint
-- List S3 backups: `docker-compose exec backup aws s3 ls s3://fireflybackup/`
+### Backup Issues
+- Check cron job: `crontab -l`
+- View backup logs: `tail -f /var/log/firefly-backup.log`
+- Test manual backup: `./scripts/backup.sh`
+- Check S3 configuration: ensure `.s3.env` is correct
+- Verify AWS CLI: `aws --version`
 
 ### Restore Issues
-- Verify backup file integrity in `/backup` directory
-- Check Docker volume permissions and existence
-- Ensure sufficient disk space for restore operation
-- Review restore logs for specific error messages
-- For manual restore, ensure containers are stopped first
+- Ensure containers are stopped before restore
+- Check S3 connectivity: verify backup file exists in bucket
+- Check disk space: ensure sufficient space for download and extraction
+- Review restore logs for error messages
+
+### Container Issues
+- Check external network exists: `docker network ls | grep firefly`
+- Verify environment files exist: `.env`, `.db.env`
+- Check container logs: `docker-compose logs`
+- Verify port 8081 is available
 
 ### Storage Issues
-- Check disk space: `df -h backup/` and `df -h logs/`
-- Verify volume mounts: `docker-compose exec backup df -h`
-- Check log rotation: `docker-compose exec backup ls -la /logs/`
-- Monitor backup retention: `ls -la backup/ | wc -l` (should not exceed ~30 files)
+- Check local backup space: `df -h backup/`
+- Monitor S3 bucket usage in Cloudflare R2 dashboard
+- Verify backup retention cleanup is working
+
+## Key Differences from Previous Version
+
+### Removed Complexity
+- ❌ Complex backup service container with orchestration
+- ❌ Automatic startup restore functionality
+- ❌ Container lifecycle management via Docker socket
+- ❌ Advanced logging and rotation systems
+- ❌ Daemon-based backup service with multiple scripts
+
+### New Simplicity
+- ✅ Simple 2-container setup (app + db only)
+- ✅ Host-based cron for scheduling
+- ✅ Two manual commands: backup and restore
+- ✅ Direct S3 integration without complexity
+- ✅ Standard docker-compose operations
+- ✅ Clean startup every time (no restore automation)
+
+This simplified architecture maintains all essential functionality while being much easier to understand, maintain, and troubleshoot.

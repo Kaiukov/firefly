@@ -1,7 +1,7 @@
 services:
   app:
     image: fireflyiii/core:latest
-    restart: "no"
+    restart: unless-stopped
     volumes:
       - firefly_iii_upload:/var/www/html/storage/upload
     env_file:
@@ -13,6 +13,8 @@ services:
         condition: service_healthy
     networks:
       - firefly
+    environment:
+      - TZ=Europe/Kyiv
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       start_period: 60s
@@ -22,52 +24,21 @@ services:
 
   db:
     image: mariadb:lts
-    restart: "no"
+    restart: unless-stopped
     env_file:
       - .db.env
     volumes:
       - firefly_iii_db:/var/lib/mysql
     networks:
       - firefly
+    environment:
+      - TZ=Europe/Kyiv
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 3
-
-  backup:
-    image: alpine:latest
-    restart: always
-    container_name: firefly-backup
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - firefly_iii_upload:/data/firefly_iii_upload:ro
-      - firefly_iii_db:/data/firefly_iii_db:ro
-      - ./backup:/backup
-      - ./scripts:/scripts
-      - ./logs:/logs
-      - ./.env:/.env:ro
-      - ./.db.env:/.db.env:ro
-      - ./.s3.env:/.s3.env:ro
-      - ./docker-compose.yml:/docker-compose.yml:ro
-    environment:
-      - TZ=UTC
-      - STARTUP_DELAY=5
-    depends_on:
-      app:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    networks:
-      - firefly
-    command: >
-      sh -c "
-        apk add --no-cache aws-cli docker-cli docker-compose mysql-client dcron tzdata && 
-        ls -la /scripts/ &&
-        chmod +x /scripts/*.sh 2>/dev/null || true &&
-        sh /scripts/backup_service.sh daemon
-      "
 
 networks:
   firefly:
