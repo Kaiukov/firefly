@@ -10,7 +10,7 @@ This is a Firefly III personal finance manager setup using Docker Compose with a
 - `/backend/` - Complete Firefly III Docker setup with automated backup system
 - `/frontend/` - (Reserved for future frontend development)
 
-**Working Directory:** All commands should be run from the `/backend/` directory.
+**Working Directory:** All commands should be run from the root directory `/Users/oleksandrkaiukov/Code/firefly`
 
 ## Current Architecture
 
@@ -44,11 +44,10 @@ This is a Firefly III personal finance manager setup using Docker Compose with a
 ## Current Commands
 
 ### Docker Operations
-**Note: Run all commands from the `/backend/` directory**
+**Note: Run all commands from the root directory**
 
 ```bash
-# Change to backend directory
-cd backend/
+# Working directory should be root (firefly/)
 
 # Start all services (app + database + backup)
 docker-compose up -d
@@ -72,7 +71,7 @@ docker-compose ps
 # View backup service status
 docker-compose logs backup
 
-# Manual backup via backup service container (from /backend/ directory)
+# Manual backup via backup service container
 docker-compose exec backup sh /scripts/backup_service.sh daily_backup
 
 # Manual S3 cleanup
@@ -112,19 +111,19 @@ docker volume inspect firefly_iii_upload
 ### Current Required Files
 - `.env`: Firefly III application configuration
 - `.db.env`: Database credentials
-- `.s3.env`: S3 credentials (configured but not integrated yet)
+- `.s3.env`: S3/Cloudflare R2 credentials (active and integrated)
 
 ### Current Setup Notes
 - App runs on port 8081 (mapped from container port 8080)
 - Database uses MariaDB LTS image
 - External "firefly" network required
-- S3 backup/restore system operational (Phase 1 complete)
+- S3 backup/restore system operational with Cloudflare R2
 - Graceful fallback to local-only if S3 unavailable
 
 ### S3 Configuration Template (.s3.env)
 ```bash
 S3_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
-S3_BUCKET=firefly-backups
+S3_BUCKET=fireflybackup
 S3_ACCESS_KEY=your-access-key-here
 S3_SECRET_KEY=your-secret-key-here
 S3_REGION=auto
@@ -166,7 +165,7 @@ BACKUP_RETENTION_DAYS=30
 ### 1. Create Cloudflare R2 Bucket
 1. Log into Cloudflare dashboard
 2. Go to R2 Object Storage  
-3. Create bucket named `fireflybackups`
+3. Create bucket named `fireflybackup`
 
 ### 2. Generate API Credentials
 1. Go to R2 → Manage R2 API tokens
@@ -193,6 +192,40 @@ docker-compose exec backup sh /scripts/backup_service.sh daily_backup
 4. **Health Monitoring**: Automated health checks verify S3 connectivity and disk space
 5. **Advanced Logging**: Comprehensive logs with rotation in `/logs` directory
 6. **Manual Operations**: All backup operations available via docker exec commands
+
+## Architecture Details
+
+### Container Relationships
+- **Firefly App** connects to **MariaDB** via internal "firefly" network
+- **Backup Service** monitors both containers via Docker socket and volume mounts  
+- **External Network**: "firefly" must be created manually before startup
+- **Volume Dependencies**: App and DB volumes are mounted read-only to backup service
+
+### Data Flow
+1. **Normal Operation**: App ↔ Database (port 8081 exposed externally)
+2. **Backup Flow**: Service creates archives from volumes → Local storage → S3 upload
+3. **Restore Flow**: S3 download → Volume recreation → Container restart
+4. **Logging**: All operations logged to `/logs` with rotation
+
+### Critical Dependencies
+- External Docker network "firefly" 
+- Environment files: `.env`, `.db.env`, `.s3.env` (gitignored for security)
+- Docker socket access for backup service container management
+- S3/Cloudflare R2 bucket with proper API tokens
+
+## Known Issues & Limitations
+
+### Active Issues
+- **Cron Job Execution**: Some log entries show script path issues in backup container
+- **Volume Name Dependencies**: Scripts assume specific Docker Compose project naming
+- **Missing Config Templates**: No `.env.example` files for new deployments
+- **Docker Socket Security**: Backup service has full Docker daemon access
+
+### Architecture Limitations  
+- **Single Point of Failure**: S3 bucket is only backup destination
+- **No Backup Verification**: Created backups are not integrity checked
+- **Root Container Privileges**: Backup service runs with elevated permissions
+- **Manual Network Setup**: External network requires manual creation
 
 ## Troubleshooting Automated System
 
